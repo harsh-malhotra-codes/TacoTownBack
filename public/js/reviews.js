@@ -1,16 +1,20 @@
 // Reviews Page JavaScript
 class ReviewsManager {
     constructor() {
-        this.reviews = this.loadReviews();
+        this.reviews = [];
         this.currentRating = 0;
-
         this.init();
     }
 
-    init() {
+    async init() {
+        await this.loadReviewsData();
         this.setupEventListeners();
         this.loadReviewsGrid();
         this.setupRatingSystem();
+    }
+
+    async loadReviewsData() {
+        this.reviews = await this.loadReviews();
     }
 
     setupEventListeners() {
@@ -78,70 +82,31 @@ class ReviewsManager {
         });
     }
 
-    loadReviews() {
-        // Load reviews from localStorage or use sample data
-        const savedReviews = localStorage.getItem('tacoReviews');
-        if (savedReviews) {
-            return JSON.parse(savedReviews);
+    async loadReviews() {
+        try {
+            // Fetch reviews from backend API
+            const response = await fetch('/api/reviews');
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    // Transform backend data to match frontend format
+                    return data.data.map(review => ({
+                        id: review.id,
+                        name: review.name,
+                        email: review.email || '',
+                        rating: review.rating,
+                        text: review.text,
+                        date: review.created_at ? review.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+                        avatar: review.name.charAt(0).toUpperCase()
+                    }));
+                }
+            }
+        } catch (error) {
+            console.error('Error fetching reviews:', error);
         }
 
-        // Sample reviews
-        return [
-            {
-                id: 1,
-                name: "Sarah Johnson",
-                email: "sarah.j@email.com",
-                rating: 5,
-                text: "Absolutely amazing tacos! The flavors are authentic and the ingredients are so fresh. The delivery was super fast too. Will definitely order again!",
-                date: "2023-12-15",
-                avatar: "S"
-            },
-            {
-                id: 2,
-                name: "Mike Chen",
-                email: "mike.chen@email.com",
-                rating: 4,
-                text: "Great food and excellent service. The chicken tacos were perfectly seasoned. Only suggestion would be to add more spice options.",
-                date: "2023-12-14",
-                avatar: "M"
-            },
-            {
-                id: 3,
-                name: "Emma Davis",
-                email: "emma.davis@email.com",
-                rating: 5,
-                text: "Best Mexican food in town! The portions are generous and the taste is incredible. Love the packaging too - everything stays fresh during delivery.",
-                date: "2023-12-13",
-                avatar: "E"
-            },
-            {
-                id: 4,
-                name: "Carlos Rodriguez",
-                email: "carlos.r@email.com",
-                rating: 5,
-                text: "As a Mexican food enthusiast, I can say these tacos are authentic and delicious. The salsa is homemade and the meat is perfectly cooked. Highly recommended!",
-                date: "2023-12-12",
-                avatar: "C"
-            },
-            {
-                id: 5,
-                name: "Lisa Wong",
-                email: "lisa.wong@email.com",
-                rating: 4,
-                text: "Very tasty and good value for money. The veggie options are great too. Delivery was on time and the food was hot when it arrived.",
-                date: "2023-12-11",
-                avatar: "L"
-            },
-            {
-                id: 6,
-                name: "David Kim",
-                email: "david.kim@email.com",
-                rating: 5,
-                text: "Outstanding customer service and delicious food! The staff was friendly and the tacos exceeded my expectations. Will be a regular customer.",
-                date: "2023-12-10",
-                avatar: "D"
-            }
-        ];
+        // Fallback to empty array if API fails
+        return [];
     }
 
     saveReviews() {
@@ -256,32 +221,45 @@ class ReviewsManager {
             return;
         }
 
-        // Create new review
-        const newReview = {
-            id: Date.now(),
-            name: name,
-            email: email || '',
-            rating: this.currentRating,
-            text: text,
-            date: new Date().toISOString().split('T')[0],
-            avatar: name.charAt(0).toUpperCase()
-        };
+        try {
+            // Submit review to backend API
+            const response = await fetch('/api/reviews', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    name: name,
+                    email: email || '',
+                    rating: this.currentRating,
+                    text: text
+                })
+            });
 
-        // Add to reviews array
-        this.reviews.unshift(newReview); // Add to beginning
-        this.saveReviews();
+            const result = await response.json();
 
-        // Reset form
-        this.resetForm();
+            if (result.success) {
+                // Reload reviews from API
+                this.reviews = await this.loadReviews();
 
-        // Reload reviews grid
-        this.loadReviewsGrid();
+                // Reset form
+                this.resetForm();
 
-        // Show success modal
-        this.showReviewModal();
+                // Reload reviews grid
+                this.loadReviewsGrid();
 
-        // Show notification
-        this.showNotification('Thank you for your review!', 'success');
+                // Show success modal
+                this.showReviewModal();
+
+                // Show notification
+                this.showNotification('Thank you for your review!', 'success');
+            } else {
+                this.showNotification('Failed to submit review. Please try again.', 'error');
+            }
+        } catch (error) {
+            console.error('Error submitting review:', error);
+            this.showNotification('Failed to submit review. Please try again.', 'error');
+        }
     }
 
     resetForm() {
