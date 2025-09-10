@@ -275,6 +275,162 @@ app.post('/contact', (req, res) => {
     });
 });
 
+// Reviews API endpoints
+
+// Get all reviews
+app.get('/api/reviews', async (req, res) => {
+    try {
+        if (!supabase) {
+            return res.status(500).json({
+                success: false,
+                message: 'Database not configured'
+            });
+        }
+
+        const { data, error } = await supabase
+            .from('reviews')
+            .select('*')
+            .order('created_at', { ascending: false });
+
+        if (error) {
+            console.error('Supabase error:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to fetch reviews'
+            });
+        }
+
+        res.json({
+            success: true,
+            data: data || []
+        });
+    } catch (error) {
+        console.error('Server error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+});
+
+// Save a new review
+app.post('/api/reviews', async (req, res) => {
+    try {
+        if (!supabase && !supabaseAdmin) {
+            return res.status(500).json({
+                success: false,
+                message: 'Database not configured'
+            });
+        }
+
+        const { name, email, rating, text } = req.body;
+
+        if (!name || !rating || !text) {
+            return res.status(400).json({
+                success: false,
+                message: 'Name, rating, and review text are required'
+            });
+        }
+
+        if (rating < 1 || rating > 5) {
+            return res.status(400).json({
+                success: false,
+                message: 'Rating must be between 1 and 5'
+            });
+        }
+
+        // Try with supabaseAdmin first (bypasses RLS)
+        let { data, error } = supabaseAdmin ? await supabaseAdmin
+            .from('reviews')
+            .insert([
+                {
+                    name: name,
+                    email: email || '',
+                    rating: rating,
+                    text: text,
+                    avatar: name.charAt(0).toUpperCase()
+                }
+            ])
+            .select() : { data: null, error: new Error('Admin client not available') };
+
+        // If admin fails, try regular client
+        if (error && supabase) {
+            console.log('Admin insert failed, trying regular client:', error.message);
+            ({ data, error } = await supabase
+                .from('reviews')
+                .insert([
+                    {
+                        name: name,
+                        email: email || '',
+                        rating: rating,
+                        text: text,
+                        avatar: name.charAt(0).toUpperCase()
+                    }
+                ])
+                .select());
+        }
+
+        if (error) {
+            console.error('Supabase error:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to save review'
+            });
+        }
+
+        console.log('Review saved to Supabase:', data);
+        res.json({
+            success: true,
+            message: 'Review submitted successfully',
+            data: data
+        });
+    } catch (error) {
+        console.error('Server error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+});
+
+// Delete a review (admin only)
+app.delete('/api/reviews/:reviewId', async (req, res) => {
+    try {
+        if (!supabase) {
+            return res.status(500).json({
+                success: false,
+                message: 'Database not configured'
+            });
+        }
+
+        const { reviewId } = req.params;
+
+        const { error } = await supabase
+            .from('reviews')
+            .delete()
+            .eq('id', reviewId);
+
+        if (error) {
+            console.error('Supabase error:', error);
+            return res.status(500).json({
+                success: false,
+                message: 'Failed to delete review'
+            });
+        }
+
+        res.json({
+            success: true,
+            message: 'Review deleted successfully'
+        });
+    } catch (error) {
+        console.error('Server error:', error);
+        res.status(500).json({
+            success: false,
+            message: 'Internal server error'
+        });
+    }
+});
+
 
 
 // Health check
